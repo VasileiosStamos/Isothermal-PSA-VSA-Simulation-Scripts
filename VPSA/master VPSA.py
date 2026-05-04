@@ -43,10 +43,10 @@ Rinse = 0.195
 master_params = {
     # Bed & System Parameters
     'feed_molar_flow': feed/Nsets,
-    "u_feed_rinse": 0.36,
+    "u_feed_rinse": 0.5,
     "L": 16,
     "d":5.2, 
-    "T": 20 + 273.15,
+    "T": 30 + 273.15,
     "R": 8.314,
     "P_high": Phigh,
     'P_mid' : 1*101325,
