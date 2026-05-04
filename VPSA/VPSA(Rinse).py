@@ -108,7 +108,10 @@ def calc_rhs(t, y, N, P_low, P_mid, u_feed, eps, rho_s, dz, MW, mu, y_feed, k_ld
     flux_in_2 = (current_u / eps) * (y_feed[2] * feed_ramp) * (current_P / (R * T))
     
     mass_transfer_coef = ((1 - eps) / eps) * rho_s
+    C_target = P_mid / (R * T)
+    tau_P = 0.1
     
+
     for j in range(N):
         raw_C_0 = y[0 * N + j]
         raw_C_1 = y[1 * N + j]
@@ -146,11 +149,7 @@ def calc_rhs(t, y, N, P_low, P_mid, u_feed, eps, rho_s, dz, MW, mu, y_feed, k_ld
         # Velocity Update
         du = -dz * ((1 - eps) * rho_s * sum_dqdt / (current_P / (R * T)))
         next_u = current_u + du
-        # Floor the velocity to prevent numerical collapse at the adsorption front.
-        u_floor = 0.05 * u_feed
-        if next_u < u_floor:
-            next_u = u_floor
-        
+
         # Dynamic Upwinding
         if next_u >= 0.0:
             up_C_0, up_C_1, up_C_2 = raw_C_0, raw_C_1, raw_C_2
@@ -164,10 +163,12 @@ def calc_rhs(t, y, N, P_low, P_mid, u_feed, eps, rho_s, dz, MW, mu, y_feed, k_ld
         flux_out_1 = (next_u / eps) * up_C_1 
         flux_out_2 = (next_u / eps) * up_C_2 
         
-        res[0 * N + j] = -((flux_out_0 - flux_in_0) / dz) - mass_transfer_coef * dqdt_0
-        res[1 * N + j] = -((flux_out_1 - flux_in_1) / dz) - mass_transfer_coef * dqdt_1
-        res[2 * N + j] = -((flux_out_2 - flux_in_2) / dz) - mass_transfer_coef * dqdt_2
-        
+        # Pressure-relaxation: pull sum(C) back to P_mid/(R*T) without changing composition
+        p_corr = -(C_tot_raw - C_target) / tau_P
+        res[0 * N + j] = -((flux_out_0 - flux_in_0) / dz) - mass_transfer_coef * dqdt_0 + p_corr * y_frac_0
+        res[1 * N + j] = -((flux_out_1 - flux_in_1) / dz) - mass_transfer_coef * dqdt_1 + p_corr * y_frac_1
+        res[2 * N + j] = -((flux_out_2 - flux_in_2) / dz) - mass_transfer_coef * dqdt_2 + p_corr * y_frac_2
+
         flux_in_0, flux_in_1, flux_in_2 = flux_out_0, flux_out_1, flux_out_2
         
         # Pressure Update

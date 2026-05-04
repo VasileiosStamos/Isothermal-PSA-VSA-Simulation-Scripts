@@ -39,7 +39,7 @@ feed_input= 1.358e4 #kmol/h
 feed = feed_input*1000/3600 #mol/s
 Nsets = 10
 CSSHALF = 0.5
-Rinse = 0.2
+Rinse = 0.195
 master_params = {
     # Bed & System Parameters
     'feed_molar_flow': feed/Nsets,

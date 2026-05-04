@@ -171,14 +171,14 @@ def calc_rhs_blowdown(t, y, N, P_low, P_start, tau_bd, eps, rho_s, dz, k_ldf, q_
             if j == 0:
                 C_up_0, C_up_1, C_up_2 = 0.0, 0.0, 0.0 # Vacuum backflow assumption
             else:
-                C_up_0 = y[0 * N + j - 1]
-                C_up_1 = y[1 * N + j - 1]
-                C_up_2 = y[2 * N + j - 1]
+                C_up_0 = max(y[0 * N + j - 1], 0.0)
+                C_up_1 = max(y[1 * N + j - 1], 0.0)
+                C_up_2 = max(y[2 * N + j - 1], 0.0)
         else:
             # Flowing DOWNWARDS (Standard Blowdown behavior)
-            C_up_0 = y[0 * N + j]
-            C_up_1 = y[1 * N + j]
-            C_up_2 = y[2 * N + j]
+            C_up_0 = max(y[0 * N + j], 0.0)
+            C_up_1 = max(y[1 * N + j], 0.0)
+            C_up_2 = max(y[2 * N + j], 0.0)
 
         F_face_0[j] = v_face * C_up_0
         F_face_1[j] = v_face * C_up_1
@@ -216,7 +216,7 @@ def pde_blowdown(t, y):
     return calc_rhs_blowdown(t, y, N, P_low, P_start, tau_bd, eps, rho_s, dz, k_ldf, q_s, b_toth, R, T)
 
 sol_bd = solve_ivp(pde_blowdown, [t_eval_bd[0], t_eval_bd[-1]], y0_bd, method='BDF',
-                   t_eval=t_eval_bd, rtol=1e-3, atol=1e-4, first_step=0.01)
+                   t_eval=t_eval_bd, rtol=1e-6, atol=1e-8, first_step=0.01)
 pbar_bd.close() 
 
 #=============================================================================
@@ -314,8 +314,9 @@ print(f"Cycle Recovery:   {cycle_recovery:.2f}% (Net fresh CO2 captured / fresh 
 # =============================================================================
 # 6. VISUALIZATION & STATE SAVING
 # =============================================================================
-C_plot_combined = np.maximum(C_history_bd, 1e-8) 
-y_history_combined = C_plot_combined / np.sum(C_plot_combined, axis=1, keepdims=True)
+C_pos = np.maximum(C_history_bd, 0.0)
+denom = np.maximum(np.sum(C_pos, axis=1, keepdims=True), 1e-30)
+y_history_combined = C_pos / denom
 
 fig_metrics, axes_metrics = plt.subplots(1, 2, figsize=(14, 5), tight_layout=True)
 axes_metrics[0].plot(t_actual_bd, np.sum(species_flow_bd, axis=1), color='orange', linewidth=2.5)
