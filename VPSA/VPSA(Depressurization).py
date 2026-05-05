@@ -216,7 +216,7 @@ def pde_blowdown(t, y):
     return calc_rhs_blowdown(t, y, N, P_low, P_start, tau_bd, eps, rho_s, dz, k_ldf, q_s, b_toth, R, T)
 
 sol_bd = solve_ivp(pde_blowdown, [t_eval_bd[0], t_eval_bd[-1]], y0_bd, method='BDF',
-                   t_eval=t_eval_bd, rtol=1e-3, atol=1e-4, first_step=0.01)
+                   t_eval=t_eval_bd, rtol=1e-3, atol=1e-4, first_step=0.001)
 pbar_bd.close() 
 
 #=============================================================================
