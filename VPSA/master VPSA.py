@@ -112,8 +112,6 @@ def plot_css_gantt(t_ads, t_rinse, t_bd, t_rep, total_cycle, save_path):
     plt.close(fig)
 
 
-
-
 ads_script = "VPSA(ads,New).py" 
 des_script = "VPSA(Depressurization).py"
 rep_script = "VPSA(Repressurization).py"
@@ -143,13 +141,13 @@ def wipe_states():
 # --- 1.2 DEFINE INITIAL MASTER PARAMETERS ---
 Phigh = 2* 101325  
 Plow = 0.03 * 101325   
-feed_input= 1.358e4 #kmol/h
+feed_input= 1.456e4 #kmol/h
 feed = feed_input*1000/3600 #mol/s
 Nsets = 22
 CSSHALF = 0.5
 Rinse = 0.21
 master_params = {
-    # Bed & System Parameters
+    # Bed & System Parametersmaster VPSA.py
     'feed_molar_flow': feed/Nsets,
     "u_feed_rinse": 0.2865,
     "L": 14,
@@ -278,7 +276,6 @@ for cycle in range(1, max_cycles + 1):
                 f.write(f"Purge:          {final_t_des:.1f} s\n")
                 f.write(f"Repress:        {final_t_rep:.1f} s\n")
                 f.write(f"Total Cycle:    {total_cycle_time:.1f} s\n")
-
             # --- CSS schedule Gantt chart for one bed pair ---
             gantt_path = os.path.join(script_dir, "results", "CSS_Gantt_Schedule.png")
             plot_css_gantt(t_ads=final_t_ads,
