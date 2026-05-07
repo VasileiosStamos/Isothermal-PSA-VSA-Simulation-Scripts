@@ -141,7 +141,7 @@ def wipe_states():
 # --- 1.2 DEFINE INITIAL MASTER PARAMETERS ---
 Phigh = 2* 101325  
 Plow = 0.03 * 101325   
-feed_input= 1.456e4 #kmol/h
+feed_input= 1.331e4 #kmol/h
 feed = feed_input*1000/3600 #mol/s
 Nsets = 22
 CSSHALF = 0.5
@@ -149,7 +149,7 @@ Rinse = 0.22
 master_params = {
     # Bed & System Parametersmaster VPSA.py
     'feed_molar_flow': feed/Nsets,
-    "u_feed_rinse": 0.25,
+    "u_feed_rinse": 0.27,
     "L": 14,
     "d":3.05, 
     "T": 35 + 273.15,
