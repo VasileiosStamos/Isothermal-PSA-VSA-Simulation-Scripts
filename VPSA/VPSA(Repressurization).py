@@ -13,9 +13,6 @@ from tqdm import tqdm
 
 warnings.filterwarnings('ignore')
 
-def leaky_max(x, eps=1e-10, alpha=1e-6):
-    return np.where(x > eps, x, eps + alpha * (x - eps))
-
 # =============================================================================
 # 2. CYCLE DETECTION & SETUP
 # =============================================================================
@@ -76,6 +73,9 @@ q_s = k_qs_1 + k_qs_2 * T
 b_0 = np.array([[1.16e-9], [2.83e-9], [1e-8]]).repeat(N, axis=1)  
 B_val = np.array([[1944.61], [2598.2], [1e-8]]).repeat(N, axis=1)                 
 b_toth = b_0 * np.exp(B_val / T)
+
+# Feed composition entering the open top during repressurization [N2, CO2, O2]
+y_rep = np.array(config.get("y_rep", [1.0, 0.0, 0.0]), dtype=float)
 
 # =============================================================================
 # 4. REPRESSURIZATION PHASE 
@@ -141,7 +141,7 @@ def pde_repressurization(t, y):
     
     # Inlet face (Right face of N-1)
     # If flowing in (-z), it carries pure N2 feed. If leaking out (+z), it carries C_safe.
-    C_feed = np.array([P_t / (R * T), 0.0, 0.0])
+    C_feed = y_rep * (P_t / (R * T))
     F_R[:, -1] = (v_inlet * C_safe[:, -1]) * (v_inlet > 0) + (v_inlet * C_feed) * (v_inlet <= 0)
     
     d_vC_dz = (F_R - F_L) / dz

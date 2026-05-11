@@ -209,10 +209,10 @@ if os.path.exists(rep_state_file) and run_type != "SCOUT":
     print("-> Loading bed state from Repressurization.")
 else:
     print("-> Initializing clean bed with pure N2 environment.")
-    y_pure = np.array([1.0, 1e-10, 1e-10])
+    y_pure = np.array([1, 1e-10, 1e-10])
     C_pure_total = P_high / (R * T) # Ideal Gas Law
     C_init = np.tile(y_pure * C_pure_total, (N, 1)).T
-    
+
     P_partial_init_Pa = np.array([y_pure[i] * P_high * np.ones(N) for i in range(3)])
     q_init = np.zeros((3, N))
     for j in range(N):
@@ -399,7 +399,8 @@ elif run_type in ["CSS", "FINAL"]:
              t_tot=t_tot,
              co2_moles_fed=co2_moles_fed_exact,
              co2_moles_exhaust_ads=float(moles_exhaust_gross[1]),
-             ads_end_inventory=final_inventory) 
+             ads_end_inventory=final_inventory,
+             exhaust_mix_pct=exhaust_mix_pct) 
     
     print(f"✅ Adsorption State Saved.")
 
