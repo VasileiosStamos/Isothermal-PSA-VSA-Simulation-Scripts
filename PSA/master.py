@@ -32,8 +32,8 @@ def wipe_states():
 # --- 1.2 DEFINE INITIAL MASTER PARAMETERS ---
 Phigh = 15 * 101325  
 Plow = 1 * 101325   
-PFratio = 0.09 # Increased purge for realistic CSS stability
-L=12 #m
+PFratio = 0.07 # Increased purge for realistic CSS stability
+L=13 #m
 d =3 #m
 master_params = {
     # Bed & System Parameters

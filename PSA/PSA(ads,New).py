@@ -58,7 +58,7 @@ A = pi*(d/2)**2
 labels = ['H2', 'CO', 'CO2', 'CH4', 'N2']
 colors = ['gray', 'blue', 'red', 'green', 'purple']
 MW = np.array([0.002016, 0.02801, 0.04401, 0.01604, 0.02801])
-y_feed = np.array([0.783843, 0.003649, 0.193034, 0.017725, 0.001951])
+y_feed = np.array([0.782297, 0.002001, 0.193665, 0.020062, 0.001965])
 y_feed /= np.sum(y_feed)
 
 # Peng-Robinson Z-factor logic
@@ -78,7 +78,7 @@ def get_Z_PR(P, T, y):
 
 mass_out_total = 100000e3/(330*24*3600)  
 target_mass_out_H2 = mass_out_total/Nsets
-expected_recovery = 0.73
+expected_recovery = 0.759
 
 required_molar_in_H2 = (target_mass_out_H2 / MW[0]) / expected_recovery
 required_molar_in_total = required_molar_in_H2 / y_feed[0]
