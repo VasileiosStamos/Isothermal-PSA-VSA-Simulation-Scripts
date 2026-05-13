@@ -1,5 +1,4 @@
 # PSA & VPSA Cyclic Adsorption Simulator
-
 Two Python script sets that solve coupled, stiff, hyperbolic-parabolic PDE systems describing **Pressure Swing Adsorption (PSA)** and **Vacuum Pressure Swing Adsorption (VPSA)** beds. Each cycle is integrated phase-by-phase, with the converged bed state propagated via a fixed-point iteration on cycle-end loadings until **Cyclic Steady State (CSS)** is reached.
 
 | Set | Application | PDE system size | Pressure swing |
@@ -82,7 +81,6 @@ Both masters follow the same overarching workflow:
 The bed starts clean (PSA: pure H₂; VPSA: pure feed). The adsorption script runs for a long time (`t_ads_end` = 2000 s for PSA, 2500 s for VPSA) so the breakthrough curve fully develops.
 
 The script then:
-
 1. Finds the time at which exit purity drops below 99.92 %.
 2. Multiplies that breakthrough time by `t_ads_safety_ratio` (0.9–0.95) → this becomes `t_op_ads`, the **operating adsorption time**.
 3. Auto-scales the other phase times from configurable ratios:
@@ -139,7 +137,6 @@ There is no inter-process Python state. Each phase is a standalone script. They 
 | `previous_cycle_state.npz` | Master | Master (convergence check) | — |
 
 **3. Environment variables** — the master sets two before each `subprocess.run`:
-
 - `RUN_TYPE` ∈ `{SCOUT, CSS, FINAL}` — tells the adsorption script whether to run long-and-optimize, run-to-`t_op_ads`, or run long-on-converged-bed.
 - `PSA_CYCLE` — used for naming the per-cycle results folder.
 
@@ -154,7 +151,6 @@ Each phase reduces a coupled PDE system to a stiff ODE system via the **method o
 The column **z ∈ [0, L]** is split into **N = 100** equal cells of width `dz = L/N`, with nodes placed at cell centers `z_j = (j + ½)·dz`. State variables are the cell-averaged gas concentration `C_{i,j}` and solid loading `q_{i,j}` for each species *i* and cell *j*.
 
 Convective transport uses a **first-order upwind flux**, but with two distinct flavours depending on the phase:
-
 - **Static upwind** (PSA adsorption) — flow is always cocurrent, so the inlet flux at cell *j* is just the outlet flux of cell *j-1*. The `flux_in[i] = flux_out_i` rolling assignment runs forward through the loop.
 - **Dynamic / sign-aware upwind** (VPSA adsorption, rinse, blowdown, repressurization) — at each cell the local velocity sign `sign(next_u)` is checked, and the upwind donor cell is selected accordingly. This matters because in VPSA the reflux step (rinse) and vacuum blowdown can locally reverse direction, and forcing a fixed upwind direction would inject mass against the actual flow.
 
@@ -267,15 +263,12 @@ Two distinct strategies are used:
 
 - **PSA — instantaneous-flow trapezoidal integration.** Tail-gas moles per species in blowdown and purge are computed by `np.trapz(species_flow, t_actual, axis=0)` over the BDF output grid. Adsorption recovery uses a grounded mass balance `moles_out_gross(t) = ∫₀ᵗ ṅ_in dτ − Δ(bed_inventory)` so integrator drift is absorbed into the inventory term.
 - **VPSA — inventory differencing + analytic ramp integrals.** The blowdown audit computes `moles_vacuumed = max(initial_inventory − final_inventory, 0)` directly from the saved bed states, completely sidestepping the BDF time grid for cumulative quantities. The "fed CO₂" and "rinsed CO₂" totals needed for true cycle recovery are computed from the **closed-form integral** of the soft-start ramp:
-
   ```
   ∫₀^t_end  ṅ · (1 − exp(−τ/τ_ramp))  dτ  =  ṅ · ( t_end + τ_ramp · (exp(−t_end/τ_ramp) − 1) )
   ```
-
   This avoids trapezoid error on the early-time exponential and is what gets stored as `co2_moles_fed` / `co2_moles_rinse` in the npz handover files.
 
 The VPSA blowdown reports **three independent recovery metrics** from the same audit:
-
 1. **Purity** = `co2_moles_collected / total_moles_collected` — composition of the vacuum tail gas.
 2. **Gross step recovery** = `co2_moles_collected / initial_co2_in_bed` — how much of the loaded CO₂ the vacuum actually pulled off (vacuum efficiency).
 3. **Cycle recovery** = `(co2_moles_collected − co2_moles_rinse) / co2_moles_fed` — true capture rate, netted against the CO₂ recycled as rinse to avoid double-counting.
@@ -319,7 +312,6 @@ Edit the `master_params` dict at the top of `master.py` or `master VPSA.py`. The
 | `CoD_Ratio` (VPSA) | Fraction on cocurrent depressurization |
 
 **Solver / convergence**
-
 - `t_ads_end` — length of the SCOUT and FINAL adsorption runs (must be long enough to see breakthrough)
 - `t_ads_safety_ratio` — multiplied by breakthrough time to set the operating adsorption time
 - `tau_bd` — blowdown time constant for the exponential pressure decay
@@ -328,7 +320,6 @@ Edit the `master_params` dict at the top of `master.py` or `master VPSA.py`. The
 - `N` — number of spatial nodes (default 100; raise for accuracy, lower for speed)
 
 **Material properties** (PSA has two layers blended by a sigmoid at `ratio_layer1`; VPSA is single-layer)
-
 - `eps_1`, `eps_2`, `rho_s_1`, `rho_s_2` (PSA) — bed voidage and solid density per layer
 - `eps`, `rho_s` (VPSA) — single-layer values
 - `dp` — particle diameter
@@ -339,7 +330,6 @@ Edit the `master_params` dict at the top of `master.py` or `master VPSA.py`. The
 ## 8. Outputs
 
 Per cycle (`results/<RUN_TYPE>_cycle_<n>/`):
-
 - `ads_performance.png` — Purity & Recovery vs. time, plus instantaneous mass flows
 - `ads_breakthrough_curve.png` — C/C₀ at z = L for each species (SCOUT + FINAL only)
 - `ads_profiles_2d.png` — spatial mol-fraction profiles + breakthrough curve (CSS + FINAL)
@@ -350,7 +340,6 @@ Per cycle (`results/<RUN_TYPE>_cycle_<n>/`):
 - `desorption_summary.txt` — tail-gas composition (BD vs. Purge), instantaneous purge front
 
 Once converged, the master also writes:
-
 - `results/CSS_Timing_Report.txt` — final timings for **CapEx / OpEx sizing**, including:
   - Adsorption / Rinse / Blowdown / Purge / Repress times
   - Total cycle time
@@ -363,20 +352,19 @@ Once converged, the master also writes:
 
 - **`FileNotFoundError: …_end_state.npz`** — a phase ran before the prior phase finished. The master clears these on the right transitions; if you run a phase script directly, you must set `PSA_CYCLE` and `RUN_TYPE` env vars and ensure the upstream `.npz` exists.
 - **Velocity warning ("Bed Fluidisized") in VPSA** — `u_feed > 1.3 m/s` means feed flow is too high for the bed cross-section. Increase `d` or reduce `feed_input` in the master.
-- **CSS never converges** — usually means the phase ratios don’t balance (bed is over- or under-regenerated each cycle). Try: lower `Adsorption_Ratio`, raise `Purge_Ratio`/`Rinse_Ratio`, or raise `t_ads_safety_ratio` away from 1.
+- **CSS never converges** — usually means the phase ratios don't balance (bed is over- or under-regenerated each cycle). Try: lower `Adsorption_Ratio`, raise `Purge_Ratio`/`Rinse_Ratio`, or raise `t_ads_safety_ratio` away from 1.
 - **`RuntimeWarning` from `np.roots` in Peng-Robinson** — harmless; the warning filter suppresses it. Z-factor selects the largest real root (vapour-like).
 - **Long runtime** — first call to a Numba-compiled function compiles it (~5–10 s). Subsequent cycles reuse the cache.
-- **Rinse inlet pressure exceeds `P_mid` on `pressure-state`** — expected. With a Dirichlet-`u` inlet boundary, the bed pressurises to whatever level Ergun requires to push the prescribed `u_feed_rinse` through. At the current design point (`d = 5.2 m`, `L = 16 m`, `u_feed_rinse = 0.4 m/s`) this gives `P(z=0) ≈ 1.82 bar` versus `P_mid = 1.5 bar`. To recover the textbook uniform-pressure model with `ΔP_Ergun ≪ P_op`, enlarge `d` (the inertial term scales as `1/d⁴`)
+- **Rinse inlet pressure exceeds `P_mid` on `pressure-state`** — expected. With a Dirichlet-`u` inlet boundary, the bed pressurises to whatever level Ergun requires to push the prescribed `u_feed_rinse` through. At the current design point (`d = 5.2 m`, `L = 16 m`, `u_feed_rinse = 0.4 m/s`) this gives `P(z=0) ≈ 1.82 bar` versus `P_mid = 1.5 bar`. To recover the textbook uniform-pressure model with `ΔP_Ergun ≪ P_op`, enlarge `d` (the inertial term scales as `1/d⁴`).
 - **Blowdown elution shows a small early-time inflection** — physical, not numerical. See [Section 12. The Blowdown Elution Inflection](#12-the-blowdown-elution-inflection).
 
 ---
 
-## 10. Why It’s Structured This Way
+## 10. Why It's Structured This Way
 
 A monolithic single-file simulator would be easier to read but harder to debug — when the recovery is wrong, you want to know whether the bug is in adsorption, regeneration, or repressurization without re-running the full cycle.
 
 Splitting each phase into its own script means:
-
 - Each phase can be **rerun independently** for debugging given the right `*_end_state.npz` and `master_config.json`.
 - The master is a thin orchestrator: it owns the cycle logic and convergence check; it owns no physics.
 - The CSS loop is a clean `for cycle in range(...)` whose inner body is four `subprocess.run` calls. You can add a phase (the VPSA Rinse and CoD steps were added this way) without touching the others.
@@ -454,3 +442,125 @@ with `D_ax` from the Edwards–Richardson or Wakao–Funazkri correlations
 upwind flux with a TVD limiter (van Leer, superbee). Neither changes the
 audit numbers; both broaden the rinse front to a physically realistic
 width of several centimetres and remove the inflection.
+
+---
+
+## 13. Plant-Wide Header Smoothing & Buffer Sizing (VPSA)
+
+### 13.1 The Problem CSS Cannot Solve
+
+The single-bed simulation converges to a Cyclic Steady State — every bed returns to the same solid loading at the end of every cycle, and per-cycle mass balance holds exactly. But CSS is a statement about one bed in isolation. A real plant runs `2 × Nsets` beds simultaneously (currently 30 beds, paired into 15 Skarstrom units), all piped into a single shared product header. Even when every bed is perfectly at CSS, the merged header flow is not guaranteed to be constant in time.
+
+The instantaneous header flow is the superposition of contributions from every bed:
+
+```
+F_header(t) = Σ over all beds  [ +flow_prod  if adsorbing
+                                  −flow_rinse if rinsing
+                                   0          otherwise ]
+```
+
+For this sum to be flat, a purely **geometric (combinatorial) condition** must hold:
+
+```
+N_beds × duty_cycle_fraction  ∈  ℤ      for every header-active step
+```
+
+If the product is not an integer, the number of beds simultaneously in that step alternates between the two nearest integers — producing a periodic triangular ripple on the header. CSS convergence has no mechanism to fix this, because it is not a thermodynamic property of any individual bed.
+
+### 13.2 Integer-Alignment Audit for the Current Plant
+
+With `Nsets = 15` (30 beds total) and the converged CSS timing:
+
+| Step | Duty fraction | N × duty | Integer? | Header effect |
+|------|--------------|----------|----------|---------------|
+| Production | 0.50 | 15.0 | ✅ | 15 beds always producing → **flat gross flow** |
+| Rinse | 0.22 | 6.6 | ❌ | 6 ↔ 7 beds rinsing simultaneously → **triangular ripple** |
+| Blowdown | 0.18 | 5.4 | ❌ | vacuum side — does not affect product header |
+| Repress | 0.10 | 3.0 | ✅ | feed side — does not affect product header |
+
+The production step satisfies the integer condition exactly (duty = 0.50, N × 0.50 = 15), so the gross production flow is mathematically flat. The rinse step does not (N × 0.22 = 6.6), so the net header flow carries a small periodic ripple from the alternation between 6 and 7 simultaneous rinsing beds.
+
+Integrated over one stagger interval, this ripple corresponds to approximately **5,000 mol of header inventory**. At 1.5 bar and 35 °C that translates to a buffer tank of roughly **80 m³**; at 10 bar the same mole swing fits in ~13 m³.
+
+### 13.3 The Staggered Superposition Engine
+
+After the CSS Picard loop converges, the master calls `run_staggered_superposition()` to quantify and visualize the plant-wide header behavior. The function tiles all 30 beds across a shared time axis and computes the aggregate flow at every second.
+
+**Step 1 — Time grid**
+
+```python
+t = np.arange(0, n_cycles * T_cycle + dt, dt)   # dt = 1 s
+```
+
+A uniform 1-second grid spanning two complete plant cycles. Two cycles are sufficient to capture all stagger-interval beating patterns.
+
+**Step 2 — Per-bed flow via modulo arithmetic**
+
+Each bed `i` is phase-shifted from bed 0 by `i × stagger_interval`. Rather than looping over cycles explicitly, the modulo operator wraps time back to the start of each bed's local cycle in a single vectorized operation:
+
+```python
+for i in range(n_beds):
+    t_local    = (t - i * stagger_interval) % cycle_time
+    prod_mask  = (t_local >= 0)         & (t_local < t_ads)
+    rinse_mask = (t_local >= t_ads)     & (t_local < t_ads + t_rinse)
+    flow_net   = np.where(prod_mask,  flow_prod,
+                 np.where(rinse_mask, flow_rinse, 0.0))
+```
+
+`prod_mask` and `rinse_mask` are boolean arrays of the same length as `t`. `np.where` selects `flow_prod` (positive, mol/s) wherever a bed is adsorbing, `flow_rinse` (negative, mol/s) wherever it is rinsing, and 0 elsewhere. The modulo means no explicit cycle-counting is needed — the same three lines handle an arbitrary number of cycles for any bed index.
+
+The `stagger_interval` is `T_cycle / (2 × Nsets)`. This nesting arises because each Skarstrom unit already internally pairs two beds at a half-cycle offset (so the shared vacuum pump runs continuously); the outer stagger of `T_cycle / Nsets` between pairs then subdivides into `T_cycle / (2 × Nsets)` between individual beds. Modelling at the individual bed level keeps the implementation as a single loop and lets the Gantt chart honestly show all 30 rows.
+
+**Step 3 — Aggregate**
+
+```python
+Total_Gross_Flow = sum of prod contributions across all beds   # production only
+Total_Net_Flow   = sum of (prod − rinse) across all beds       # what the compressor sees
+```
+
+`Total_Gross_Flow` is flat by the integer-alignment argument above. `Total_Net_Flow` carries the rinse ripple.
+
+**Step 4 — Buffer sizing via cumulative summation**
+
+The key insight is that the buffer tank must absorb the running imbalance between the instantaneous header flow and its time average — not the total flow itself. This running imbalance is computed by subtracting the mean and integrating:
+
+```python
+residual        = Total_Net_Flow - np.mean(Total_Net_Flow)    # mol/s, zero-mean
+inventory_mol   = np.cumsum(residual) * dt                    # mol, running mole balance
+holdup_mol      = inventory_mol.max() - inventory_mol.min()   # peak-to-trough swing
+V_m3            = holdup_mol * R * T_buffer / P_buffer        # ideal gas law → m³
+```
+
+`np.cumsum(residual) * dt` integrates the flow deviation second by second. At each point in time it answers: *how many moles have accumulated in (or been drawn from) the buffer since the start, relative to steady-state?* The buffer must be large enough to cover the worst-case excursion in either direction — the difference between the maximum and minimum of the inventory trajectory, `holdup_mol`. That mole swing is then converted to a tank volume at any chosen storage pressure and temperature via the ideal gas law.
+
+The same calculation is run separately for `Total_Gross_Flow` and `Total_Net_Flow`, giving buffer volumes for two different header plumbing configurations (rinse drawn from header vs. rinse on a separate recycle line).
+
+**Step 5 — Outputs**
+
+```
+results/VPSA_Nbed_superposition.png   — 3-panel: Gantt / gross flow trace / inventory trajectory
+results/VPSA_Nbed_flow.csv            — per-bed flows, totals, both inventory traces (for off-line sizing)
+Console                               — stagger interval, mean/max/min flows, holdup mol, buffer m³
+```
+
+The Gantt panel shows all 30 beds as horizontal bars, colour-coded by phase (Adsorption, Rinse, Blowdown, Repress), making it immediately readable as a schedule for CapEx and OpEx planning.
+
+### 13.4 Why the Gross Flow Is Flat but the Net Is Not
+
+Production duty = 0.50 → `30 × 0.50 = 15` (integer), so exactly 15 beds are always producing, no more and no less. The gross flow is perfectly constant at `15 × flow_prod`.
+
+Rinse duty = 0.22 → `30 × 0.22 = 6.6` (non-integer), so the number of beds rinsing alternates between 6 and 7. The net flow therefore oscillates between `15 × flow_prod − 6 × flow_rinse` and `15 × flow_prod − 7 × flow_rinse`. A flat gross flow minus a rippling rinse consumption equals a rippling net flow. The buffer tank must absorb that difference.
+
+### 13.5 Three Design Options and Their Trade-offs
+
+| Aspect | Option 1 — More beds | Option 2 — Single large bed-pair + big buffer | Option 3 — Stagger + small buffer *(adopted)* |
+|--------|---------------------|----------------------------------------------|----------------------------------------------|
+| Idea | Add beds until `N × rinse_duty ∈ ℤ` | One Skarstrom pair; entire flow stored during adsorption | 15 pairs phased by `T_cycle / 15`; buffer absorbs residual ripple |
+| Buffer volume | ~0 m³ | Several thousand m³ at low pressure | ~50–170 m³ (pressure-dependent) |
+| Vacuum pumps | Many small (loses economy of scale) | One very large (cheap per kW, oversized motor) | Moderate count; best economy of scale |
+| Turndown | Best — drop pairs offline | Worst — all-or-nothing | Good |
+| Net CapEx | High (valve/PLC overhead) | Highest (buffer dominates at low P) | Lowest |
+| Net OpEx | Best (pumps at design point) | Worst (pump cycles full-to-idle) | Good (pumps at design point) |
+
+Option 3 is the CapEx and OpEx winner at this scale. The buffer tank is modest (fits after first-stage compression), the vacuum pumps run continuously at their design point, and the PLC stagger logic is straightforward. Options 1 and 2 become progressively less economic as throughput grows because their dominant costs (valve count and buffer volume, respectively) scale linearly or super-linearly with capacity.
+
