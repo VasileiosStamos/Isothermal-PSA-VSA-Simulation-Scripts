@@ -189,7 +189,7 @@ sol = solve_ivp(pde_layered, [0, t_end], y0, method='BDF', t_eval=t_ads_eval, rt
 pbar.close()
 
 # =============================================================================
-# 4. TIME-SERIES POST-PROCESSING (Grounded Mass Balance + Surge Tank)
+# 4. TIME-SERIES POST-PROCESSING 
 # =============================================================================
 t = sol.t; n_t = len(t)
 C_history = sol.y[:5*N, :].T.reshape((-1, 5, N))
@@ -212,7 +212,6 @@ for i in range(1, n_t):
     delta_storage = (np.sum(C_at_t[0, :] * dz * A * eps) + np.sum(q_at_t[0, :] * dz * A * (1-eps) * rho_s)) - n_H2_inventory
     moles_out_gross = moles_in_array[i] - delta_storage
     
-    # --- STRICT PENALTY (No Surge Tank) ---
     moles_out_net = (moles_out_gross * (1.0 - purge_fraction)) - n_H2_rep_penalty
     recovery_over_time[i] = (max(0, moles_out_net) / max(moles_in_array[i], 1e-9)) * 100
     

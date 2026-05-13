@@ -6,16 +6,13 @@ import matplotlib
 matplotlib.use('Agg') 
 import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
-import scipy.sparse as sp 
 import warnings
 from tqdm import tqdm
 from numba import njit 
 
 warnings.filterwarnings('ignore')
 
-# =============================================================================
-# 1. RUN ROUTER & PATHS
-# =============================================================================
+# --- RUN ROUTER & PATHS ---
 run_type = os.environ.get("RUN_TYPE", "CSS") 
 current_cycle = os.environ.get("PSA_CYCLE", "1")
 
@@ -32,7 +29,7 @@ with open(config_path, "r") as f:
 
 L = config["L"]; T = config["T"]; R = config["R"]
 P_high = config["P_high"]; P_low = config["P_low"]
-d = config["d"]; Nsets = config["Nsets"]
+d = config["d"]
 purge_fraction = float(config.get("purge_fraction", 0.0))
 t_ads_safety_ratio = float(config.get("t_ads_safety_ratio", 0.90))
 
@@ -50,25 +47,20 @@ else:
     t_end = config.get("t_op_ads", 400) 
 t_ads_eval = np.linspace(0, t_end, config.get("t_ads_steps", 500))
 
-# =============================================================================
-# 2. FEED SIZING & SYSTEM PARAMETERS
-# =============================================================================
+# --- FEED SIZING & SYSTEM PARAMETERS ---
 A = pi*(d/2)**2 
 labels = ['N2', 'CO2', 'O2']
 colors = ['gray', 'blue', 'red']
 MW = np.array([0.028014, 0.044009, 0.031998])
-y_feed = np.array([0.804585, 0.1006, 0.0304]) 
+y_feed = np.array([0.889752, 0.1093, 0.000948]) 
 y_feed /= np.sum(y_feed)
 
 feed_molar_flow = float(config.get("feed_molar_flow", 450.0)) 
 
-# --- IDEAL GAS LAW USED HERE ---
 C_in_total = P_high / (R * T)
-u_feed = feed_molar_flow / (A * C_in_total) 
+u_feed = feed_molar_flow / (A * C_in_total)
 C_in = y_feed * C_in_total
 
-
-# --- NEW DIAGNOSTIC READOUT ---
 print(f"\n--- FEED DIAGNOSTICS ---")
 print(f"Target Feed Flow:     {feed_molar_flow:.2f} mol/s")
 print(f"Column Cross Section: {A:.4f} m^2")
@@ -94,15 +86,13 @@ b_toth = b_0 * np.exp(B_val / T)
 a_ergun_arr = (150 * (1 - eps)**2) / (4 * (dp/2)**2 * eps**3) * np.ones(N)
 b_ergun_arr = (1.75 * (1 - eps)) / (2 * (dp/2) * eps**3) * np.ones(N)
 
-# =============================================================================
-# 3. PDE SOLVER LOGIC (Fully Unrolled for Maximum Speed)
-# =============================================================================
+# --- PDE SOLVER ---
 @njit(cache=True)
 def calc_rhs(t, y, N, P_low, P_high, P_atm_Pa, u_feed, eps, rho_s, dz, MW, Rp, mu, y_feed, k_ldf, q_s, b_toth, R, T, a_ergun_arr, b_ergun_arr):
     res = np.empty(6 * N) 
     current_P = P_high
     current_u = u_feed
-    feed_ramp = 1.0 - np.exp(-t / 0.5) # Reaches ~95% after 1.5 seconds
+    feed_ramp = 1.0 - np.exp(-t / 0.5)
 
     flux_in_0 = (current_u / eps) * (y_feed[0] * feed_ramp + (1 - feed_ramp)) * (current_P / (R * T)) 
     flux_in_1 = (current_u / eps) * (y_feed[1] * feed_ramp) * (current_P / (R * T))
@@ -120,12 +110,10 @@ def calc_rhs(t, y, N, P_low, P_high, P_atm_Pa, u_feed, eps, rho_s, dz, MW, Rp, m
         y_1 = max(raw_C_1, 0.0) / C_tot_raw
         y_2 = max(raw_C_2, 0.0) / C_tot_raw
         
-        # 1. Calculate partial pressures using the STABLE Ergun pressure
         P_0_kPa = (y_0 * current_P)
-        P_1_kPa = (y_1 * current_P)  
-        P_2_kPa = (y_2 * current_P) 
-        # 2. Toth Isotherm (with absolute value on the base to prevent NaN in exponent)
-        # Langmuir Isotherm 
+        P_1_kPa = (y_1 * current_P)
+        P_2_kPa = (y_2 * current_P)
+        # Langmuir/Toth isotherm
         denom_0 = 1.0 + (b_toth[0, j] * P_0_kPa)
         denom_1 = 1.0 + (b_toth[1, j] * P_1_kPa)
         denom_2 = 1.0 + (b_toth[2, j] * P_2_kPa)
@@ -143,24 +131,22 @@ def calc_rhs(t, y, N, P_low, P_high, P_atm_Pa, u_feed, eps, rho_s, dz, MW, Rp, m
         res[5 * N + j] = dqdt_2
         
         sum_dqdt = dqdt_0 + dqdt_1 + dqdt_2
-        
-        # 7. Velocity Update
+
+        # velocity update with floor
         du = -dz * ((1 - eps) * rho_s * sum_dqdt / (current_P / (R * T)))
         next_u = current_u + du
-        # Floor the velocity to prevent numerical collapse at the adsorption front.
         u_floor = 0.05 * u_feed
         if next_u < u_floor:
             next_u = u_floor
-        
-        # 8. Gas Phase Balances (DYNAMIC UPWINDING)
-        # Check flow direction to prevent pushing negative concentrations forward
+
+        # dynamic upwinding
         if next_u >= 0.0:
             upwind_C_0 = raw_C_0
             upwind_C_1 = raw_C_1
             upwind_C_2 = raw_C_2
         else:
             if j < N - 1:
-                upwind_C_0 = y[0 * N + j + 1]  # Pull from the cell ahead
+                upwind_C_0 = y[0 * N + j + 1]
                 upwind_C_1 = y[1 * N + j + 1]
                 upwind_C_2 = y[2 * N + j + 1]
             else:
@@ -180,11 +166,10 @@ def calc_rhs(t, y, N, P_low, P_high, P_atm_Pa, u_feed, eps, rho_s, dz, MW, Rp, m
         flux_in_1 = flux_out_1
         flux_in_2 = flux_out_2
         
-        # 9. Pressure Update
+        # Ergun pressure update
         if j < N - 1:
             ergun_ramp = (1.0 - np.exp(-t / 2.0))
-            
-            # Protect gas density from numerical concentration spikes
+
             rho_gas = (y_0 * MW[0] + y_1 * MW[1] + y_2 * MW[2]) * (current_P / (R * T))
             
             dPdz = - (a_ergun_arr[j] * mu * current_u + b_ergun_arr[j] * rho_gas * current_u * abs(current_u)) * ergun_ramp
@@ -210,7 +195,7 @@ if os.path.exists(rep_state_file) and run_type != "SCOUT":
 else:
     print("-> Initializing clean bed with pure N2 environment.")
     y_pure = np.array([1, 1e-10, 1e-10])
-    C_pure_total = P_high / (R * T) # Ideal Gas Law
+    C_pure_total = P_high / (R * T)
     C_init = np.tile(y_pure * C_pure_total, (N, 1)).T
 
     P_partial_init_Pa = np.array([y_pure[i] * P_high * np.ones(N) for i in range(3)])
@@ -227,9 +212,7 @@ sol = solve_ivp(pde_layered, [0, t_end], y0, method='BDF', t_eval=t_ads_eval, rt
 print("\n✅ Integration complete! Generating plots and saving data...")
 pbar.close()
 
-# =============================================================================
-# 5. POST-PROCESSING (Exhaust Consistency Metrics)
-# =============================================================================
+# --- POST-PROCESSING ---
 t = sol.t; n_t = len(t)
 C_history = sol.y[:3*N, :].T.reshape((-1, 3, N))
 
@@ -247,16 +230,7 @@ for i in range(1, n_t):
     mass_flow_out_exhaust_net[i] = inst_gross_flow * (1.0 - purge_fraction)
     mass_flow_purge_exhaust[i] = inst_gross_flow * purge_fraction
 
-# =============================================================================
-# 6. DIAGNOSTIC PLOTS
-# =============================================================================
-fig, ax_mass = plt.subplots(figsize=(10, 6), constrained_layout=True)
-ax_mass.plot(t, np.full_like(t, u_feed * A * C_in_total * np.mean(MW)), 'k--', label='Total Feed Capacity')
-ax_mass.plot(t, mass_flow_out_exhaust_gross, 'gray', linestyle=':', label='Gross Exhaust Flow')
-ax_mass.plot(t, mass_flow_out_exhaust_net, 'r-', linewidth=2, label='Net Exhaust Flow (Raffinate)')
-ax_mass.set_title(f'[{run_type}] Instantaneous Mass Flow Rates'); ax_mass.set_ylabel('Mass Flow (kg/s)'); ax_mass.legend(); ax_mass.grid(True)
-fig.savefig(os.path.join(cycle_folder, "ads_performance.png"))
-
+# --- DIAGNOSTIC PLOTS ---
 if run_type == "SCOUT":
     fig_break, ax_break = plt.subplots(figsize=(9, 6), constrained_layout=True)
     for i in range(3):
@@ -313,9 +287,7 @@ if run_type != "SCOUT":
     ax_p.legend(); ax_p.grid(True, linestyle='--', alpha=0.6); ax_p.set_xlim(0, L)
     fig_p.savefig(os.path.join(cycle_folder, "ads_pressure_profile.png"))
 
-# =============================================================================
-# 7. REPORTING & STATE SAVING
-# =============================================================================
+# --- REPORTING & STATE SAVING ---
 eval_idx = -1
 
 initial_inventory = np.zeros(3)
@@ -341,8 +313,7 @@ total_gross_exhaust = np.sum(moles_exhaust_gross)
 exhaust_mix_pct = (moles_exhaust_gross / total_gross_exhaust) * 100 if total_gross_exhaust > 0 else np.zeros(3)
 
 if run_type == "SCOUT":
-    # CO2 breakthrough: first time exit C/C0 crosses the threshold.
-    co2_breakthrough_threshold = 0.01  # 1% of feed CO2 concentration
+    co2_breakthrough_threshold = 0.01
     co2_exit_ratio = np.maximum(C_history[:, 1, -1] / C_in[1], 0.0)
 
     valid = np.where(co2_exit_ratio >= co2_breakthrough_threshold)[0]

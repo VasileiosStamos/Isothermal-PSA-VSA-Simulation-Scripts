@@ -12,13 +12,13 @@ import re
 # --- 1.2 DEFINE INITIAL MASTER PARAMETERS ---
 Phigh = 2* 101325  
 Plow = 0.03 * 101325   
-feed_input= 1.27e4 #kmol/h
+feed_input= 1.073e4 #kmol/h
 feed = feed_input*1000/3600 #mol/s
-Nsets = 13
+Nsets = 14
 CSSHALF = 0.5
 Rinse = 0.22
 master_params = {
-    # Bed & System Parametersmaster VPSA.py
+    # Bed & System Parameters
     'feed_molar_flow': feed/Nsets,
     "u_feed_rinse": 0.27,
     "L": 14,

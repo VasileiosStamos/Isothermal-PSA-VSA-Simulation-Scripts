@@ -13,9 +13,7 @@ from tqdm import tqdm
 
 warnings.filterwarnings('ignore')
 
-# =============================================================================
-# 2. CYCLE DETECTION & SETUP
-# =============================================================================
+# --- SETUP ---
 run_type = os.environ.get("RUN_TYPE", "CSS")
 current_cycle = int(os.environ.get("PSA_CYCLE", 1))
 
@@ -26,9 +24,7 @@ os.makedirs(cycle_folder, exist_ok=True)
 
 print(f"\n--- Starting Repressurization for [{run_type}] Cycle {current_cycle} ---")
 
-# =============================================================================
-# 3. LOAD PARAMETERS & BED STATE
-# =============================================================================
+# --- LOAD PARAMETERS & BED STATE ---
 config_path = os.path.join(script_dir, "master_config.json")
 with open(config_path, "r") as f:
     config = json.load(f)
@@ -58,12 +54,11 @@ MW = np.array([0.028014, 0.044009, 0.031998])
 dz = L / N
 z_nodes = np.linspace(dz/2, L - dz/2, N)
 
-# --- SINGLE MATERIAL SETUP ---
-eps = float(config.get("eps", 0.35))    
+eps = float(config.get("eps", 0.35))
 rho_s = float(config.get("rho_s", 2000))
 mass_transfer_coeff = ((1 - eps) / eps) * rho_s
 
-# --- TOTH ISOTHERM CONSTANTS ---
+# Toth isotherm constants
 k_ldf = np.array([[0.0021], [0.0143], [0.002]]).repeat(N, axis=1) 
 
 k_qs_1 = np.array([[1.89],[2.82],[1e-8]]).repeat(N, axis=1)
@@ -74,73 +69,65 @@ b_0 = np.array([[1.16e-9], [2.83e-9], [1e-8]]).repeat(N, axis=1)
 B_val = np.array([[1944.61], [2598.2], [1e-8]]).repeat(N, axis=1)                 
 b_toth = b_0 * np.exp(B_val / T)
 
-# Feed composition entering the open top during repressurization [N2, CO2, O2]
+# feed composition at open top
 y_rep = np.array(config.get("y_rep", [1.0, 0.0, 0.0]), dtype=float)
 
-# =============================================================================
-# 4. REPRESSURIZATION PHASE 
-# =============================================================================
+# --- REPRESSURIZATION PHASE ---
 
 print(f"\n--- Solving Repressurization phase (Target: {P_high/1e5:.1f} bar in {tf_rep:.1f}s) ---")
 pbar_rep = tqdm(total=P_high, desc="Pressurizing", unit="Pa", bar_format="{l_bar}{bar}| {n:.2e}/{total_fmt} [{elapsed}<{remaining}]")
 last_P_mean = [P_low] 
 
-def pde_repressurization(t, y): 
-    # State Unpacking
+def pde_repressurization(t, y):
     C = y[:3*N].reshape((3, N))
     q = y[3*N:].reshape((3, N))
-    
-    # 1. THE SAFEGUARDS (Prevent negative mass hallucinations)
-    C_safe = np.maximum(C, 1e-12) 
+
+    # prevent negative mass
+    C_safe = np.maximum(C, 1e-12)
     q_safe = np.maximum(q, 1e-12)
-    
-    # 2. EXACT IDEAL GAS LAW DENSITY
+
     dPdt_target = (P_high - P_low) / tf_rep
     P_t = P_low + dPdt_target * t
-    
-    # Update progress bar smoothly based on theoretical pressure
+
     if P_t > last_P_mean[0]:
         pbar_rep.update(P_t - last_P_mean[0])
         last_P_mean[0] = P_t
-        
+
     C_total_theo = P_t / (R * T)
     dCtot_dt_compression = dPdt_target / (R * T)
-    
-    # 3. KINETICS (Using P_t in Pascals)
-    y_frac = C_safe / np.sum(C_safe, axis=0) 
-    P_partial_Pa = np.clip((y_frac * P_t), 1e-10, P_high * 1.5) 
-    
+
+    y_frac = C_safe / np.sum(C_safe, axis=0)
+    P_partial_Pa = np.clip((y_frac * P_t), 1e-10, P_high * 1.5)
+
     denom = 1.0 + (b_toth * P_partial_Pa)
     q_star = (b_toth * P_partial_Pa * q_s) / denom
-    
-    dqdt = k_ldf * (q_star - q_safe) 
-    sum_dqdt = np.sum(dqdt, axis=0) 
-    
-    # 4. VELOCITY INTEGRATION (Anchored at CLOSED bottom z=0)
+
+    dqdt = k_ldf * (q_star - q_safe)
+    sum_dqdt = np.sum(dqdt, axis=0)
+
+    # velocity anchored at closed bottom
     dv_dz = -(dCtot_dt_compression + mass_transfer_coeff * sum_dqdt) / C_total_theo
-    
-    v_local = np.zeros(N) # v_local[j] is the velocity at the LEFT face of cell j
-    v_local[0] = 0.0 # Wall at z=0
-    
+
+    v_local = np.zeros(N)
+    v_local[0] = 0.0
+
     for j in range(0, N-1):
-        v_local[j+1] = v_local[j] + dv_dz[j] * dz 
-        
-    v_inlet = v_local[-1] + dv_dz[-1] * dz # Velocity at open inlet
-    
-    # 5. IMMUNE DYNAMIC UPWINDING
+        v_local[j+1] = v_local[j] + dv_dz[j] * dz
+
+    v_inlet = v_local[-1] + dv_dz[-1] * dz
+
+    # dynamic upwinding
     F_L = np.zeros((3, N))
-    mask_fwd = v_local > 0.0 
+    mask_fwd = v_local > 0.0
     mask_bwd = v_local <= 0.0
-    
-    # Internal faces
+
     F_L[:, 1:] = (v_local[1:] * C_safe[:, :-1]) * mask_fwd[1:] + (v_local[1:] * C_safe[:, 1:]) * mask_bwd[1:]
-    F_L[:, 0] = 0.0 # Closed bottom wall
-    
+    F_L[:, 0] = 0.0
+
     F_R = np.zeros((3, N))
     F_R[:, :-1] = F_L[:, 1:]
-    
-    # Inlet face (Right face of N-1)
-    # If flowing in (-z), it carries pure N2 feed. If leaking out (+z), it carries C_safe.
+
+    # inlet: feed in or leak out
     C_feed = y_rep * (P_t / (R * T))
     F_R[:, -1] = (v_inlet * C_safe[:, -1]) * (v_inlet > 0) + (v_inlet * C_feed) * (v_inlet <= 0)
     
@@ -160,9 +147,7 @@ C_history_rep = sol_rep.y[:3*N, :].T.reshape((actual_steps_rep, 3, N))
 t_actual_rep = sol_rep.t
 P_history = np.sum(np.maximum(C_history_rep, 1e-10), axis=1) * R * T
 
-# =============================================================================
-# 5. VISUALIZATION & PLOTTING
-# =============================================================================
+# --- VISUALIZATION ---
 fig_p, ax_p = plt.subplots(figsize=(10, 6), tight_layout=True)
 
 sample_indices = np.linspace(0, actual_steps_rep - 1, 5, dtype=int)
@@ -182,9 +167,7 @@ ax_p.set_ylim(0, P_high/1e5 * 1.1)
 ax_p.legend()
 ax_p.grid(True, linestyle=':', alpha=0.6)
 
-# =============================================================================
-# 6. SAVE RESULTS
-# =============================================================================
+# --- SAVE RESULTS ---
 pressure_path = os.path.join(cycle_folder, "rep_pressure_wave.png")
 fig_p.savefig(pressure_path)
 
